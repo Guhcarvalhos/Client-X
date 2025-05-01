@@ -2,14 +2,14 @@
 <html>
   <head>
     <meta charset="UTF-8">
-    <title>360° Panorama Gallery</title>
+    <title>360° Panorama Gallery with Hotspots</title>
     <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
     <style>
       body { 
         margin: 0; 
         font-family: Arial, sans-serif;
       }
-      .gallery-panel {
+      .control-panel {
         position: fixed;
         top: 20px;
         left: 20px;
@@ -24,6 +24,12 @@
         flex-wrap: wrap;
         gap: 10px;
         margin-top: 10px;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      .thumbnail-wrapper {
+        position: relative;
+        width: 80px;
       }
       .thumbnail {
         width: 80px;
@@ -35,26 +41,55 @@
       .thumbnail.active {
         border-color: #FF0000;
       }
-      #fileInput {
-        margin-bottom: 10px;
+      .remove-btn {
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        background: red;
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .hotspot-controls {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #ccc;
+      }
+      select, button {
+        margin: 5px 0;
+        padding: 5px;
+        width: 100%;
       }
     </style>
   </head>
   <body>
-    <div class="gallery-panel">
+    <div class="control-panel">
       <input type="file" id="fileInput" accept="image/*" multiple>
       <button onclick="loadImages()">Add Images</button>
       <div class="thumbnail-container" id="thumbnails"></div>
+      <div class="hotspot-controls">
+        <select id="hotspotTarget"></select>
+        <button onclick="addHotspot()">Add Hotspot Here</button>
+      </div>
     </div>
     
     <a-scene>
       <a-sky id="panorama" rotation="0 -90 0"></a-sky>
-      <a-camera look-controls="reverseMouseDrag: true"></a-camera>
+      <a-camera look-controls="reverseMouseDrag: true">
+        <a-cursor color="#FF0000"></a-cursor>
+      </a-camera>
     </a-scene>
 
     <script>
       let images = [];
       let currentIndex = 0;
+      let hotspots = {};
 
       function loadImages() {
         const fileInput = document.getElementById('fileInput');
@@ -64,7 +99,9 @@
           const reader = new FileReader();
           reader.onload = function(e) {
             images.push(e.target.result);
+            hotspots[images.length - 1] = [];
             addThumbnail(e.target.result, images.length - 1);
+            updateHotspotTargets();
             if(images.length === 1) {
               showPanorama(0);
             }
@@ -75,11 +112,53 @@
 
       function addThumbnail(src, index) {
         const container = document.getElementById('thumbnails');
+        const wrapper = document.createElement('div');
+        wrapper.className = 'thumbnail-wrapper';
+
         const thumb = document.createElement('img');
         thumb.src = src;
         thumb.className = 'thumbnail';
         thumb.onclick = () => showPanorama(index);
-        container.appendChild(thumb);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'remove-btn';
+        removeBtn.innerHTML = '×';
+        removeBtn.onclick = (e) => {
+          e.stopPropagation();
+          removeImage(index);
+        };
+
+        wrapper.appendChild(thumb);
+        wrapper.appendChild(removeBtn);
+        container.appendChild(wrapper);
+      }
+
+      function removeImage(index) {
+        images.splice(index, 1);
+        delete hotspots[index];
+        
+        // Reassign indices for remaining hotspots
+        const newHotspots = {};
+        Object.keys(hotspots).forEach(key => {
+          if (key > index) {
+            newHotspots[key - 1] = hotspots[key];
+          } else if (key < index) {
+            newHotspots[key] = hotspots[key];
+          }
+        });
+        hotspots = newHotspots;
+
+        // Update UI
+        document.getElementById('thumbnails').innerHTML = '';
+        images.forEach((src, i) => addThumbnail(src, i));
+        updateHotspotTargets();
+        
+        if (currentIndex >= images.length) {
+          currentIndex = Math.max(0, images.length - 1);
+        }
+        if (images.length > 0) {
+          showPanorama(currentIndex);
+        }
       }
 
       function showPanorama(index) {
@@ -87,6 +166,8 @@
           document.getElementById('panorama').setAttribute('src', images[index]);
           currentIndex = index;
           updateThumbnails();
+          clearHotspots();
+          renderHotspots(index);
         }
       }
 
@@ -94,6 +175,69 @@
         const thumbs = document.querySelectorAll('.thumbnail');
         thumbs.forEach((thumb, index) => {
           thumb.classList.toggle('active', index === currentIndex);
+        });
+      }
+
+      function updateHotspotTargets() {
+        const select = document.getElementById('hotspotTarget');
+        select.innerHTML = '';
+        images.forEach((_, index) => {
+          if (index !== currentIndex) {
+            const option = document.createElement('option');
+            option.value = index;
+            option.textContent = `Panorama ${index + 1}`;
+            select.appendChild(option);
+          }
+        });
+      }
+
+      function addHotspot() {
+        if (images.length < 2) return;
+        
+        const camera = document.querySelector('a-camera');
+        const rotation = camera.getAttribute('rotation');
+        const targetIndex = document.getElementById('hotspotTarget').value;
+        
+        const hotspot = {
+          position: calculateHotspotPosition(rotation),
+          target: parseInt(targetIndex)
+        };
+        
+        if (!hotspots[currentIndex]) {
+          hotspots[currentIndex] = [];
+        }
+        hotspots[currentIndex].push(hotspot);
+        renderHotspots(currentIndex);
+      }
+
+      function calculateHotspotPosition(rotation) {
+        const phi = (90 - rotation.x) * (Math.PI / 180);
+        const theta = (rotation.y + 90) * (Math.PI / 180);
+        
+        const x = -10 * Math.sin(phi) * Math.cos(theta);
+        const y = 10 * Math.cos(phi);
+        const z = -10 * Math.sin(phi) * Math.sin(theta);
+        
+        return {x, y, z};
+      }
+
+      function clearHotspots() {
+        const existingHotspots = document.querySelectorAll('.hotspot-marker');
+        existingHotspots.forEach(h => h.parentNode.removeChild(h));
+      }
+
+      function renderHotspots(index) {
+        if (!hotspots[index]) return;
+        
+        const scene = document.querySelector('a-scene');
+        hotspots[index].forEach(hotspot => {
+          const marker = document.createElement('a-sphere');
+          marker.classList.add('hotspot-marker');
+          marker.setAttribute('position', hotspot.position);
+          marker.setAttribute('radius', '0.3');
+          marker.setAttribute('color', '#00FF00');
+          marker.setAttribute('onclick', `showPanorama(${hotspot.target})`);
+          scene.appendChild(marker);
         });
       }
     </script>
