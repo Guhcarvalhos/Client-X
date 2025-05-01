@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>360° Panorama Gallery</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <style>
+      body { 
+        margin: 0; 
+        font-family: Arial, sans-serif;
+      }
+      .gallery-panel {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        z-index: 1000;
+        background: rgba(255, 255, 255, 0.8);
+        padding: 15px;
+        border-radius: 8px;
+        max-width: 300px;
+      }
+      .thumbnail-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 10px;
+      }
+      .thumbnail {
+        width: 80px;
+        height: 45px;
+        object-fit: cover;
+        cursor: pointer;
+        border: 2px solid transparent;
+      }
+      .thumbnail.active {
+        border-color: #FF0000;
+      }
+      #fileInput {
+        margin-bottom: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="gallery-panel">
+      <input type="file" id="fileInput" accept="image/*" multiple>
+      <button onclick="loadImages()">Add Images</button>
+      <div class="thumbnail-container" id="thumbnails"></div>
+    </div>
+    
+    <a-scene>
+      <a-sky id="panorama" rotation="0 -90 0"></a-sky>
+      <a-camera look-controls="reverseMouseDrag: true"></a-camera>
+    </a-scene>
+
+    <script>
+      let images = [];
+      let currentIndex = 0;
+
+      function loadImages() {
+        const fileInput = document.getElementById('fileInput');
+        const files = fileInput.files;
+        
+        for(let file of files) {
+          const reader = new FileReader();
+          reader.onload = function(e) {
+            images.push(e.target.result);
+            addThumbnail(e.target.result, images.length - 1);
+            if(images.length === 1) {
+              showPanorama(0);
+            }
+          };
+          reader.readAsDataURL(file);
+        }
+      }
+
+      function addThumbnail(src, index) {
+        const container = document.getElementById('thumbnails');
+        const thumb = document.createElement('img');
+        thumb.src = src;
+        thumb.className = 'thumbnail';
+        thumb.onclick = () => showPanorama(index);
+        container.appendChild(thumb);
+      }
+
+      function showPanorama(index) {
+        if(index >= 0 && index < images.length) {
+          document.getElementById('panorama').setAttribute('src', images[index]);
+          currentIndex = index;
+          updateThumbnails();
+        }
+      }
+
+      function updateThumbnails() {
+        const thumbs = document.querySelectorAll('.thumbnail');
+        thumbs.forEach((thumb, index) => {
+          thumb.classList.toggle('active', index === currentIndex);
+        });
+      }
+    </script>
+  </body>
+</html>
